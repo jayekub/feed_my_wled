@@ -28,11 +28,45 @@ To be honest, I know it will work but haven’t tested it yet. Here are some hin
 * Sends it to any WLED device on the same network (ESP32 recommended as a receiver).
 
 ## Preferences
-* `WLED_IP_ADDRESS`: IP address of your WLED device.
+
+### WLED Configuration
+* `WLED_IP_ADDRESS`: IP address(es) of your WLED device(s).
+  - Single device: `WLED_IP_ADDRESS = 192.168.1.45`
+  - Multiple devices (comma-separated): `WLED_IP_ADDRESS = 192.168.1.45, 192.168.1.46, 192.168.1.47`
 * `WLED_UDP_PORT`: Port (default is 11988).
-* `sample_rate`: Sample rate of your audio stream. Shairport-Sync’s default is 88200 (it took me hours to figure this out!).
+* `USE_MULTICAST`: Enable multicast mode instead of unicast (default is False). When enabled, audio data is sent to the multicast address `239.0.0.1`, allowing all WLED devices on the network to receive synchronization data simultaneously. This is the standard WLED multicast address.
+* `MULTICAST_IP`: Multicast IP address (default is `239.0.0.1`). Only used when `USE_MULTICAST` is True.
+
+### Audio Configuration
+* `sample_rate`: Sample rate of your audio stream. Shairport-Sync's default is 88200 (it took me hours to figure this out!).
 * `buffer_size`: Default is 163840, creating a delay of ~1.5 seconds. Adjust this variable for perfect synchronization. Higher values result in more delay.
 * `chunk_size`: Bytes read by the script at once. Higher values improve mean calculations and reduce network bandwidth usage. The default is 8192, resulting in ~25 packets per second, which is sufficient for a fluid experience.
+
+## Features
+
+### Multiple WLED Controllers (Unicast)
+You can now send audio synchronization data to multiple WLED controllers simultaneously using unicast. Simply specify multiple IP addresses in the configuration file, separated by commas:
+
+```ini
+WLED_IP_ADDRESS = 192.168.1.45, 192.168.1.46, 192.168.1.47
+```
+
+Each controller will receive identical audio data packets, allowing perfectly synchronized audio-reactive effects across all your WLED installations.
+
+### Multicast Support
+For larger installations or network efficiency, you can enable multicast mode. This uses the standard WLED multicast address (`239.0.0.1`) to broadcast audio data to all WLED devices on your network that are configured to receive multicast packets:
+
+```ini
+USE_MULTICAST = True
+```
+
+**WLED Device Configuration for Multicast:**
+* Settings → Sync → Realtime: Enable Receive UDP Realtime
+* Settings → Usermod → AudioReactive: Enabled ON
+* Settings → Usermod → AudioReactive → Sync: Port: 11988
+* Settings → Usermod → AudioReactive → Sync: Mode: Receive
+
+**Note:** Multicast uses the WLED V2 audio sync protocol format, which is compatible with WLED 0.14.0 and later.
 
 ## Setup (on a Mac)
 I recommend using Homebrew for all installations.

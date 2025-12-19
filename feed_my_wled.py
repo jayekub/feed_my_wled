@@ -12,8 +12,15 @@ config = configparser.ConfigParser()
 config.read("feed_my_wled.conf")
 
 #load preferences
-WLED_IP_ADDRESS = config.get("WLED", "WLED_IP_ADDRESS")
+# Support for multiple controllers - comma-separated IP addresses
+wled_ip_string = config.get("WLED", "WLED_IP_ADDRESS")
+WLED_IP_ADDRESSES = [ip.strip() for ip in wled_ip_string.split(',')]
 WLED_UDP_PORT = config.getint("WLED", "WLED_UDP_PORT")
+
+# Multicast configuration
+USE_MULTICAST = config.getboolean("WLED", "USE_MULTICAST", fallback=False)
+MULTICAST_IP = config.get("WLED", "MULTICAST_IP", fallback="239.0.0.1")
+
 sample_rate = config.getint("Audio", "sample_rate")
 buffer_size = config.getint("Audio", "buffer_size")
 chunk_size = config.getint("Audio", "chunk_size")
@@ -24,6 +31,12 @@ ring_buffer = deque(maxlen=buffer_size // chunk_size)  # Ringpuffer für Blöcke
 
 # create socket
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+# Configure multicast if enabled
+if USE_MULTICAST:
+    # Set TTL for multicast packets
+    ttl = struct.pack('b', 1)  # TTL=1 for local network
+    udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
 ## functions
 # calculating fft
@@ -109,7 +122,12 @@ def stream_audio_to_wled():
         ring_buffer.append(b"\x00" * chunk_size)
 
     try:
-        print(f"Start Pipe to WLED at ({WLED_IP_ADDRESS}:{WLED_UDP_PORT})...")
+        if USE_MULTICAST:
+            print(f"Start Pipe to WLED via multicast ({MULTICAST_IP}:{WLED_UDP_PORT})...")
+        else:
+            print(f"Start Pipe to WLED at {len(WLED_IP_ADDRESSES)} controller(s):")
+            for ip in WLED_IP_ADDRESSES:
+                print(f"  - {ip}:{WLED_UDP_PORT}")
 
         # open stream from pipe
         while True:
@@ -122,7 +140,7 @@ def stream_audio_to_wled():
             combined_data = b"".join(ring_buffer)
 
             # Calc FFT and Peaks with buffersize
-            fft_result = calculate_fft(combined_data[:chunk_size])
+            fft_result = calculate_fft(combined_data[:chunk_size], sample_rate)
             if fft_result[0] is None:
                 print("Unvalid FFT-Datas, skip actual block.")
                 continue
@@ -138,7 +156,13 @@ def stream_audio_to_wled():
             udp_packet = create_udp_packet(fft_data, raw_level, smoothed_level, peak_level, fft_magnitude_sum, fft_peak_frequency)
 
             # Send Package to WLED
-            udp_socket.sendto(udp_packet, (WLED_IP_ADDRESS, WLED_UDP_PORT))
+            if USE_MULTICAST:
+                # Send to multicast address
+                udp_socket.sendto(udp_packet, (MULTICAST_IP, WLED_UDP_PORT))
+            else:
+                # Send to all configured unicast addresses
+                for wled_ip in WLED_IP_ADDRESSES:
+                    udp_socket.sendto(udp_packet, (wled_ip, WLED_UDP_PORT))
 
     except KeyboardInterrupt:
         print("Audiostreaming closed.")
